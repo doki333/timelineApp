@@ -1,5 +1,14 @@
+require('dotenv').config(); 
+
+// 이제 process.env에서 접근 가능합니다.
+const token = process.env.token;
+const myId = process.env.myId;
+const studyChannelId = process.env.studyChannelId;
+const totalChannelId = process.env.totalChannelId;
+const reportChannelIdYours = process.env.reportChannelIdYours;
+const reportChannelIdMine = process.env.reportChannelIdMine;    
+
 const { Client, Events, GatewayIntentBits, ChannelType } = require('discord.js');
-const { token, myId, studyChannelId, totalChannelId, reportChannelIdMine, reportChannelIdYours } = require('./config.json');
 
 // 💡 1. 인텐트 설정 (GUILD_VOICE_STATES는 필수)
 const client = new Client({ 
