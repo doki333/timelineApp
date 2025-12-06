@@ -51,7 +51,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         joinTimes.set(userId, Date.now()); 
         const reportChannel = client.channels.cache.get(TOTAL_CHANNEL_ID);
             if (reportChannel && reportChannel.type === ChannelType.GuildText) {
-                const message = `[공부 시작] ${clie} : ${new Date().toLocaleTimeString()}`;
+                const message = `[공부 시작] ${clie} : ${new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' })}`;
                 reportChannel.send({ content: message })
                     .catch(e => console.error("메시지 전송 실패:", e));
             }
@@ -85,7 +85,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             // 💡 3. 결과 출력 및 기록 삭제
             const reportChannel2 = client.channels.cache.get(TOTAL_CHANNEL_ID);
             if (reportChannel2 && reportChannel2.type === ChannelType.GuildText) {
-                const message2 = `[공부 종료] ${clie} : ${new Date().toLocaleTimeString()}`;
+                const message2 = `[공부 종료] ${clie} : ${new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' })}`;
                 reportChannel2.send({ content: message2 })
                     .catch(e => console.error("메시지 전송 실패:", e));
             }
