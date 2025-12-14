@@ -50,11 +50,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const member = newState.member;
     const clie = member.user.username;
 
-    // --- 퇴장 조건 체크 ---
-    const isLeavingStudyChannel = 
-        oldState.channelId === STUDY_CHANNEL_ID && // 이전 채널이 공부 채널이었고
-        newState.channelId !== STUDY_CHANNEL_ID;   // 새 채널은 공부 채널이 아닐 때 (퇴장 또는 이동)
-
     // 1. 특정 채널에 있는지 확인
     const isInStudyChannel = newState.channelId === STUDY_CHANNEL_ID;
     
@@ -62,7 +57,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const oldVideo = oldState.selfVideo; // 이전 비디오 상태
     const newVideo = newState.selfVideo; // 현재 비디오 상태
 
-    if (isInStudyChannel && !oldVideo && newVideo) {
+    // =================================================================
+    // 💡 [수정된 부분] 공부 시작 로직 (중복 방지 강화)
+    // 조건: 공부 채널에 있고, 카메라가 꺼짐 -> 켜짐 상태로 전환되었으며, 
+    //       joinTimes에 해당 사용자의 기존 기록이 없을 때만 실행
+    // =================================================================
+    if (isInStudyChannel && !oldVideo && newVideo && !joinTimes.has(userId)) {
         // 입장 시간을 기록
         joinTimes.set(userId, Date.now()); 
         const reportChannel = client.channels.cache.get(TOTAL_CHANNEL_ID);
@@ -77,10 +77,21 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const joinTime = joinTimes.get(userId);
 
     if (joinTimes.has(userId)) {
-            // 세션 종료 조건: (채널을 벗어났거나 OR 카메라를 껐거나)
-    const shouldEndSession = 
-        newState.channelId !== STUDY_CHANNEL_ID || // 공부 채널을 떠났을 때 (다른 채널로 이동 또는 퇴장)
-        newState.selfVideo === false;             // 카메라를 껐을 때
+        // =================================================================
+        // 💡 [수정된 부분] 세션 종료 조건 명확화
+        // 1. 공부 채널을 떠났을 때 (퇴장 또는 다른 채널로 이동)
+        const leftStudyChannel = 
+            oldState.channelId === STUDY_CHANNEL_ID && 
+            newState.channelId !== STUDY_CHANNEL_ID;
+            
+        // 2. 공부 채널에 남아있지만, 카메라를 껐을 때 (켜짐 -> 꺼짐 전환)
+        const turnedOffCamera = 
+            newState.channelId === STUDY_CHANNEL_ID && 
+            oldState.selfVideo === true && 
+            newState.selfVideo === false;
+            
+        const shouldEndSession = leftStudyChannel || turnedOffCamera;
+
         if (shouldEndSession) {
             const leaveTime = Date.now();
             const durationMs = leaveTime - joinTime;
@@ -90,7 +101,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             const minutes = Math.floor((durationMs / (1000 * 60)) % 60);
             const hours = Math.floor(durationMs / (1000 * 60 * 60));
 
-            // 💡 추가된 부분: 각 숫자를 두 자리 문자열로 변환 (HHmmss 형식)
+            // 각 숫자를 두 자리 문자열로 변환 (HHmmss 형식)
             const formattedSeconds = String(seconds).padStart(2, '0');
             const formattedMinutes = String(minutes).padStart(2, '0');
             const formattedHours = String(hours).padStart(2, '0');
@@ -214,12 +225,11 @@ function addTimesFromMessages(curTime, messageContent) {
         return "오류: 메시지 내용이 두 줄 이상이어야 합니다.";
     }
 
-    // 💡 수정된 부분: 시간(H)은 \d+ (하나 이상의 숫자)를 허용합니다.
-    // 분(M)과 초(S)는 \d{1,2} (한 자리 또는 두 자리)를 허용합니다.
+    // 시간(H)은 \d+ (하나 이상의 숫자)를 허용합니다.
+    // 분(M)과 초(S)는 \d+ (하나 이상의 숫자)를 허용합니다.
     const timePattern = '(\\d+)시간\\s*(\\d+)분\\s*(\\d+)초';
     
     // [누적 시간] : 총 [시간 문자열]
-    // 💡 누적 시간은 100시간 이상일 수 있으므로 이 패턴이 필수입니다.
     const totalRegex = new RegExp(`\\[누적 시간\\]\\s*:\\s*총\\s*(${timePattern})`);
     
     const totalMatch = lines[1].match(totalRegex);
@@ -229,9 +239,14 @@ function addTimesFromMessages(curTime, messageContent) {
         return "오류: 메시지 패턴을 분석할 수 없습니다. (시간 형식 불일치)";
     }
 
-    const totalDurationStr = totalMatch[1];
+    // totalMatch[0]: 전체 문자열
+    // totalMatch[1]: 캡처 그룹 1 (누적 시간 전체 문자열)
+    // totalMatch[2]: 캡처 그룹 2 (누적 시간의 시간 부분)
+    // totalMatch[3]: 캡처 그룹 3 (누적 시간의 분 부분)
+    // totalMatch[4]: 캡처 그룹 4 (누적 시간의 초 부분)
     
-    // ... (이후 parseDuration 호출 및 합산 로직은 이전과 동일)
+    // totalDurationStr은 누적 시간의 "H시간 M분 S초" 부분입니다.
+    const totalDurationStr = `${totalMatch[2]}시간 ${totalMatch[3]}분 ${totalMatch[4]}초`;
     
     const recordMs = parseDuration(curTime);
     const totalMs = parseDuration(totalDurationStr);
