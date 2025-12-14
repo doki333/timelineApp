@@ -9,8 +9,8 @@ const PORT = process.env.PORT || 3000;
  */
 const PING_URL = process.env.PING_URL; 
 
-// Ping을 보낼 주기: 10분 = 10 * 60 * 1000 = 600000ms
-const INTERVAL_TIME = 10 * 60 * 1000; 
+// Ping을 보낼 주기: 5분 = 5 * 60 * 1000 = 300000ms
+const INTERVAL_TIME = 5 * 60 * 1000; 
 
 /**
  * 봇 URL로 주기적으로 HTTP 요청을 보내는 함수
