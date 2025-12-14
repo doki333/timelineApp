@@ -11,6 +11,7 @@ const reportChannelIdMine = process.env.reportChannelIdMine;
 const reportChannelIdGuest = process.env.reportChannelIdGuest;    
 
 const { Client, Events, GatewayIntentBits, ChannelType } = require('discord.js');
+const { startPinging, startWebServer } = require('./ping');
 
 // 💡 1. 인텐트 설정 (GUILD_VOICE_STATES는 필수)
 const client = new Client({ 
@@ -20,6 +21,18 @@ const client = new Client({
         GatewayIntentBits.GuildMembers
     ] 
 });
+
+client.on('clientReady', () => {
+    console.log(`[Discord] 봇이 ${client.user.tag}으로 로그인되었습니다.`);
+    
+    // 2. 봇이 로그인된 후, 핑 기능을 시작합니다. (10분마다 호출)
+    startPinging(); 
+});
+
+// 3. 봇 코드를 실행하기 전에 웹 서버를 먼저 실행합니다.
+// Koyeb이 이 서버를 보고 봇을 계속 실행 상태로 유지합니다.
+startWebServer();
+
 
 // 💡 2. 임시 저장소 Map
 const joinTimes = new Map(); 
