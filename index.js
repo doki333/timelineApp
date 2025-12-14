@@ -3,10 +3,12 @@ require('dotenv').config();
 // 이제 process.env에서 접근 가능합니다.
 const token = process.env.token;
 const myId = process.env.myId;
+const guestId = process.env.guestId;
 const studyChannelId = process.env.studyChannelId;
 const totalChannelId = process.env.totalChannelId;
 const reportChannelIdYours = process.env.reportChannelIdYours;
 const reportChannelIdMine = process.env.reportChannelIdMine;    
+const reportChannelIdGuest = process.env.reportChannelIdGuest;    
 
 const { Client, Events, GatewayIntentBits, ChannelType } = require('discord.js');
 
@@ -26,7 +28,8 @@ const joinTimes = new Map();
 const STUDY_CHANNEL_ID = studyChannelId; 
 const TOTAL_CHANNEL_ID = totalChannelId;
 const REPORT_CHANNEL_ID_YOURS = reportChannelIdYours;
-const REPORT_CHANNEL_ID_MINE = reportChannelIdMine;
+const REPORT_CHANNEL_ID_MINE = reportChannelIdMine;     
+const REPORT_CHANNEL_ID_GUEST = reportChannelIdGuest;
 
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
@@ -90,7 +93,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     .catch(e => console.error("메시지 전송 실패:", e));
             }
 
-            const targetReportChannelId = (userId === myId) ? REPORT_CHANNEL_ID_MINE : REPORT_CHANNEL_ID_YOURS;
+            let targetReportChannelId = "";
+
+            switch (userId) {
+                case myId: targetReportChannelId = REPORT_CHANNEL_ID_MINE; break;
+                case guestId: targetReportChannelId = REPORT_CHANNEL_ID_GUEST; break;
+                default: targetReportChannelId = REPORT_CHANNEL_ID_YOURS; break;
+            }
+            
             const reportChannel3 = client.channels.cache.get(targetReportChannelId);
             // limit: 1 옵션을 사용하여 가장 최근 메시지 1개만 가져옵니다.
             const lastMessages = await fetchLatestMessage(client, targetReportChannelId);
