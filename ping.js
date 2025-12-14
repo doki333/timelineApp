@@ -37,7 +37,7 @@ function startPinging() {
         });
     };
 
-    console.log(`[Ping] 자가 핑 기능이 활성화되었습니다. 10분마다 실행됩니다.`);
+    console.log(`[Ping] 자가 핑 기능이 활성화되었습니다. 5분마다 실행됩니다.`);
     
     // 봇을 시작하자마자 첫 번째 핑을 보냄
     pingSelf();

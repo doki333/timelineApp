@@ -37,12 +37,19 @@ startWebServer();
 // 💡 2. 임시 저장소 Map
 const joinTimes = new Map(); 
 
+// 🚨 [추가] 디바운싱 타이머를 저장할 Map
+// key: userId, value: setTimeout ID
+const debounceTimers = new Map(); 
+
 // 🚨🚨🚨 반드시 실제 사용하려는 음성 채널 ID로 변경해야 합니다. 🚨🚨🚨
 const STUDY_CHANNEL_ID = studyChannelId; 
 const TOTAL_CHANNEL_ID = totalChannelId;
 const REPORT_CHANNEL_ID_YOURS = reportChannelIdYours;
 const REPORT_CHANNEL_ID_MINE = reportChannelIdMine;     
 const REPORT_CHANNEL_ID_GUEST = reportChannelIdGuest;
+
+// 🚨 [설정] 디바운싱 대기 시간 (500ms)
+const DEBOUNCE_DELAY = 500;
 
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
@@ -58,19 +65,42 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const newVideo = newState.selfVideo; // 현재 비디오 상태
 
     // =================================================================
-    // 💡 [수정된 부분] 공부 시작 로직 (중복 방지 강화)
-    // 조건: 공부 채널에 있고, 카메라가 꺼짐 -> 켜짐 상태로 전환되었으며, 
-    //       joinTimes에 해당 사용자의 기존 기록이 없을 때만 실행
+    // 💡 [수정된 부분] 공부 시작 로직 (디바운싱 적용)
     // =================================================================
     if (isInStudyChannel && !oldVideo && newVideo && !joinTimes.has(userId)) {
-        // 입장 시간을 기록
-        joinTimes.set(userId, Date.now()); 
-        const reportChannel = client.channels.cache.get(TOTAL_CHANNEL_ID);
-            if (reportChannel && reportChannel.type === ChannelType.GuildText) {
-                const message = `[공부 시작] ${clie} : ${new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' })}`;
-                reportChannel.send({ content: message })
-                    .catch(e => console.error("메시지 전송 실패:", e));
-            }
+        
+        // 🚨 기존 타이머가 있다면 취소 (디바운싱)
+        if (debounceTimers.has(userId)) {
+            clearTimeout(debounceTimers.get(userId));
+            console.log(`[DEBUG] 디바운싱: ${clie}의 이전 시작 요청 취소.`);
+        }
+
+        // 새로운 타이머 설정
+        const newTimer = setTimeout(() => {
+            // 디바운싱 지연 시간 이후에 실행
+            
+            // 맵에서 타이머 삭제
+            debounceTimers.delete(userId); 
+            
+            // 이 시점에 다시 한번 joinTimes.has(userId)를 확인하여 중복 방지 (안전 장치)
+            if (joinTimes.has(userId)) return;
+
+            // 입장 시간을 기록
+            joinTimes.set(userId, Date.now()); 
+
+            const reportChannel = client.channels.cache.get(TOTAL_CHANNEL_ID);
+                if (reportChannel && reportChannel.type === ChannelType.GuildText) {
+                    const message = `[공부 시작] ${clie} : ${new Date().toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' })}`;
+                    reportChannel.send({ content: message })
+                        .catch(e => console.error("메시지 전송 실패:", e));
+                    console.log(`[DEBUG] 공부 시작 메시지 전송: ${clie}`);
+                }
+            
+        }, DEBOUNCE_DELAY);
+
+        // 새로운 타이머 저장
+        debounceTimers.set(userId, newTimer);
+
         return; // 다음 로직으로 넘어가지 않음
     }
 
@@ -78,7 +108,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
     if (joinTimes.has(userId)) {
         // =================================================================
-        // 💡 [수정된 부분] 세션 종료 조건 명확화
+        // 💡 [수정된 부분] 세션 종료 조건 명확화 (전환 상태만 확인)
+        // =================================================================
+        
         // 1. 공부 채널을 떠났을 때 (퇴장 또는 다른 채널로 이동)
         const leftStudyChannel = 
             oldState.channelId === STUDY_CHANNEL_ID && 
@@ -93,6 +125,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         const shouldEndSession = leftStudyChannel || turnedOffCamera;
 
         if (shouldEndSession) {
+            
+            // 🚨 [추가] 혹시 진행 중인 '시작' 디바운싱 타이머가 있다면 취소
+            if (debounceTimers.has(userId)) {
+                clearTimeout(debounceTimers.get(userId));
+                debounceTimers.delete(userId);
+                console.log(`[DEBUG] 공부 종료 전: 진행 중이던 시작 디바운싱 요청 취소.`);
+            }
+
             const leaveTime = Date.now();
             const durationMs = leaveTime - joinTime;
             
@@ -145,6 +185,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             
             // 맵에서 기록 삭제
             joinTimes.delete(userId); 
+            console.log(`[DEBUG] 공부 종료 메시지 전송 및 기록 삭제: ${clie}`);
         }
     }
 });
@@ -215,6 +256,7 @@ function formatDuration(totalMs) {
 // =================================================================
 /**
  * 두 줄의 메시지에서 시간을 추출하여 합산하고 포맷팅된 결과를 반환합니다.
+ * @param {string} curTime - 현재 공부 시간 문자열 ("H시간 M분 S초" 형식)
  * @param {string} messageContent - "\n"으로 구분된 두 줄의 메시지 내용 전체
  * @returns {string} 합산된 시간을 "HH시간 mm분 ss초" 형식으로 포맷팅한 문자열
  */
@@ -226,7 +268,6 @@ function addTimesFromMessages(curTime, messageContent) {
     }
 
     // 시간(H)은 \d+ (하나 이상의 숫자)를 허용합니다.
-    // 분(M)과 초(S)는 \d+ (하나 이상의 숫자)를 허용합니다.
     const timePattern = '(\\d+)시간\\s*(\\d+)분\\s*(\\d+)초';
     
     // [누적 시간] : 총 [시간 문자열]
@@ -239,13 +280,7 @@ function addTimesFromMessages(curTime, messageContent) {
         return "오류: 메시지 패턴을 분석할 수 없습니다. (시간 형식 불일치)";
     }
 
-    // totalMatch[0]: 전체 문자열
-    // totalMatch[1]: 캡처 그룹 1 (누적 시간 전체 문자열)
-    // totalMatch[2]: 캡처 그룹 2 (누적 시간의 시간 부분)
-    // totalMatch[3]: 캡처 그룹 3 (누적 시간의 분 부분)
-    // totalMatch[4]: 캡처 그룹 4 (누적 시간의 초 부분)
-    
-    // totalDurationStr은 누적 시간의 "H시간 M분 S초" 부분입니다.
+    // totalMatch[2]는 누적 시간의 "시간" 부분, [3]은 "분", [4]는 "초"입니다.
     const totalDurationStr = `${totalMatch[2]}시간 ${totalMatch[3]}분 ${totalMatch[4]}초`;
     
     const recordMs = parseDuration(curTime);
